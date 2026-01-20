@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keka Med Recall</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>🩺 Keka Med Recall</h1>
+            <p>Planeamento de Residência Médica</p>
+        </header>
+
+        <section class="card">
+            <h2>Novo Estudo (Teoria)</h2>
+            <input type="text" id="topicInput" placeholder="Ex: Insuficiência Cardíaca">
+            <p class="hint">Agendar primeira revisão para:</p>
+            <div class="buttons">
+                <button onclick="scheduleReview(24)">24 Horas</button>
+                <button onclick="scheduleReview(48)">48 Horas</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>📅 As Tuas Revisões</h2>
+            <ul id="reviewList">
+                </ul>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

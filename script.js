@@ -1,70 +1,105 @@
 document.addEventListener('DOMContentLoaded', loadReviews);
 
-// --- Passo 1: Agendar Teoria Inicial ---
+let currentReviewId = null; 
+
+// --- Passo 1: Agendar Teoria ---
 function scheduleReview(hours) {
     const topicInput = document.getElementById('topicInput');
     const topic = topicInput.value;
 
     if (!topic) {
-        alert("Por favor, digite o tema estudado!");
+        showAlert("Por favor, digite o tema estudado!");
         return;
     }
 
-    // Define a data (Agora + horas escolhidas)
     const now = new Date();
+    // Agenda a 1ª Revisão Prática (Ciclo 1)
     const reviewDate = new Date(now.getTime() + (hours * 60 * 60 * 1000));
 
-    // Cria o objeto de dados
     const reviewItem = {
         id: Date.now(),
         topic: topic,
         date: reviewDate.toISOString(),
-        cycle: 1 // Ciclo 1 = Primeira revisão
+        cycle: 1, // Essa é a primeira revisão
+        lastInterval: 0 
     };
 
     saveReview(reviewItem);
     
-    // Abre o Google Agenda
-    const gCalLink = createGoogleCalendarLink(topic, reviewDate);
+    // Google Agenda (Passamos o ciclo 1 fixo aqui)
+    const gCalLink = createGoogleCalendarLink(topic, reviewDate, 1);
     window.open(gCalLink, '_blank');
 
     topicInput.value = ""; 
     loadReviews(); 
 }
 
-// --- Passo 2: Completar e Recalcular ---
-function completeReview(id) {
-    let input = prompt("Quantas questões acertaste? (0 a 40)");
-    
-    if (input === null || input === "") return;
-    
-    let acertos = parseInt(input);
-    if (isNaN(acertos) || acertos < 0 || acertos > 40) {
-        alert("Valor inválido. Insira entre 0 e 40.");
+// --- Funções do Modal ---
+function openCompleteModal(id) {
+    currentReviewId = id;
+    document.getElementById('modalTotal').value = "";
+    document.getElementById('modalAcertos').value = "";
+    document.getElementById('modalComplete').classList.remove('hidden');
+    document.getElementById('modalTotal').focus();
+}
+
+// --- Passo 2: O Cérebro do App ---
+function confirmComplete() {
+    const totalInput = document.getElementById('modalTotal').value;
+    const acertosInput = document.getElementById('modalAcertos').value;
+
+    if (!totalInput || !acertosInput) {
+        showAlert("Preencha todos os campos!");
         return;
     }
 
-    let reviews = JSON.parse(localStorage.getItem('medReviews')) || [];
-    const itemIndex = reviews.findIndex(r => r.id === id);
+    const total = parseInt(totalInput);
+    const acertos = parseInt(acertosInput);
+
+    if (total <= 0 || acertos < 0 || acertos > total) {
+        showAlert("Números inválidos.");
+        return;
+    }
+
+    closeModal('modalComplete');
+
+    const porcentagem = (acertos / total) * 100;
     
+    let reviews = JSON.parse(localStorage.getItem('medReviews')) || [];
+    const itemIndex = reviews.findIndex(r => r.id === currentReviewId);
+
     if (itemIndex > -1) {
         const oldItem = reviews[itemIndex];
-        
-        // --- ALGORITMO DE REPETIÇÃO ESPAÇADA ---
         let diasParaProxima;
         
-        if (acertos >= 40) {
-            diasParaProxima = 28; // 4 semanas
-        } else if (acertos >= 30) {
-            diasParaProxima = 21; // 3 semanas
-        } else if (acertos >= 20) {
-            diasParaProxima = 14; // 2 semanas
-        } else if (acertos >= 10) {
-            diasParaProxima = 7;  // 1 semana
-        } else {
-            diasParaProxima = 1;  // Errou muito? Revisão amanhã.
+        // Calcula qual será o próximo número da revisão (ex: se era 1, vira 2)
+        let proximoCiclo = oldItem.cycle + 1;
+
+        // === LÓGICA DA AGENDA ===
+        
+        // CENÁRIO A: Ciclo 1 -> Ciclo 2 (Usa Tabela Fixa)
+        if (oldItem.cycle === 1) {
+            if (porcentagem >= 75) diasParaProxima = 28;      // 4 semanas
+            else if (porcentagem >= 50) diasParaProxima = 21; // 3 semanas
+            else if (porcentagem >= 25) diasParaProxima = 14; // 2 semanas
+            else diasParaProxima = 7;                         // 1 semana
+        } 
+        
+        // CENÁRIO B: Ciclos Futuros (Usa Multiplicador)
+        else {
+            const intervaloAnterior = oldItem.lastInterval; 
+            let multiplicador;
+
+            if (porcentagem >= 75) multiplicador = 2.0;       // Dobra
+            else if (porcentagem >= 50) multiplicador = 1.5;  // +50%
+            else if (porcentagem >= 25) multiplicador = 1.0;  // Mantém
+            else multiplicador = 0.5;                         // Reduz
+
+            diasParaProxima = Math.ceil(intervaloAnterior * multiplicador);
+            if (diasParaProxima < 7) diasParaProxima = 7; 
         }
 
+        // --- Salvar e Agendar ---
         const hoje = new Date();
         const novaData = new Date(hoje.getTime() + (diasParaProxima * 24 * 60 * 60 * 1000));
 
@@ -72,40 +107,78 @@ function completeReview(id) {
             id: Date.now(),
             topic: oldItem.topic,
             date: novaData.toISOString(),
-            cycle: oldItem.cycle + 1
+            cycle: proximoCiclo,
+            lastInterval: diasParaProxima
         };
 
-        // Atualiza a lista: remove o antigo, adiciona o novo
         reviews.splice(itemIndex, 1);
         reviews.push(newItem);
         reviews.sort((a, b) => new Date(a.date) - new Date(b.date));
         localStorage.setItem('medReviews', JSON.stringify(reviews));
 
-        // Agenda o próximo no Google
-        const gCalLink = createGoogleCalendarLink(newItem.topic, novaData);
+        // Aqui passamos o "proximoCiclo" para o título ficar correto
+        const gCalLink = createGoogleCalendarLink(newItem.topic, novaData, proximoCiclo);
         window.open(gCalLink, '_blank');
 
+        // Texto do feedback
+        let msgTempo;
+        if (diasParaProxima >= 30) msgTempo = `daqui a ${(diasParaProxima/30).toFixed(1)} meses`;
+        else if (diasParaProxima >= 7) msgTempo = `daqui a ${(diasParaProxima/7).toFixed(0)} semanas`;
+        else msgTempo = `daqui a ${diasParaProxima} dias`;
+
+        showAlert(`Desempenho: ${porcentagem.toFixed(0)}%\nAgendado: Revisão ${proximoCiclo} para ${msgTempo}.`);
+        
         loadReviews();
     }
 }
 
-// --- Funções Utilitárias ---
+// --- Funções Padrão ---
+function openDeleteModal(id) {
+    currentReviewId = id;
+    document.getElementById('modalDelete').classList.remove('hidden');
+}
+
+function confirmDelete() {
+    if (currentReviewId) {
+        let reviews = JSON.parse(localStorage.getItem('medReviews')) || [];
+        reviews = reviews.filter(r => r.id !== currentReviewId);
+        localStorage.setItem('medReviews', JSON.stringify(reviews));
+        closeModal('modalDelete');
+        loadReviews();
+    }
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+}
+
+function showAlert(message) {
+    document.getElementById('alertMessage').innerText = message;
+    document.getElementById('modalAlert').classList.remove('hidden');
+}
+
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal-overlay')) {
+        event.target.classList.add('hidden');
+    }
+}
 
 function saveReview(item) {
     let reviews = JSON.parse(localStorage.getItem('medReviews')) || [];
     reviews.push(item);
-    // Ordena para mostrar o mais urgente primeiro
     reviews.sort((a, b) => new Date(a.date) - new Date(b.date));
     localStorage.setItem('medReviews', JSON.stringify(reviews));
 }
 
-function createGoogleCalendarLink(topic, dateObj) {
-    // Formata data para YYYYMMDDTHHmmssZ (UTC)
+// --- ATUALIZADO: Agora recebe o parâmetro 'cycle' ---
+function createGoogleCalendarLink(topic, dateObj, cycle) {
     const start = dateObj.toISOString().replace(/-|:|\.\d\d\d/g, ""); 
-    const endObj = new Date(dateObj.getTime() + (1 * 60 * 60 * 1000)); // Duração de 1h
+    const endObj = new Date(dateObj.getTime() + (1 * 60 * 60 * 1000));
     const end = endObj.toISOString().replace(/-|:|\.\d\d\d/g, "");
 
-    const title = encodeURIComponent(`Revisão: ${topic}`);
+    // Título dinâmico: Revisão 1: Cardiologia
+    const title = encodeURIComponent(`Revisão ${cycle}: ${topic}`);
+    
     const details = encodeURIComponent("Revisão gerada pelo Keka Med Recall.");
     
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}`;
@@ -125,22 +198,22 @@ function loadReviews() {
     reviews.forEach(review => {
         const dateObj = new Date(review.date);
         const dateString = dateObj.toLocaleDateString('pt-BR');
-        
-        // Se a data já passou, pinta de vermelho
         const hoje = new Date();
         const isLate = dateObj < hoje;
         const colorStyle = isLate ? "border-left: 4px solid #ef4444;" : "border-left: 4px solid #10b981;";
 
         const li = document.createElement('li');
         li.style = colorStyle;
+        
         li.innerHTML = `
             <div class="review-info">
                 <strong>${review.topic}</strong>
                 <span>${dateString} • Ciclo ${review.cycle}</span>
             </div>
-            <button onclick="completeReview(${review.id})" class="btn-check">
-                ✅ Feito
-            </button>
+            <div class="actions">
+                <button onclick="openCompleteModal(${review.id})" class="btn-check">✅</button>
+                <button onclick="openDeleteModal(${review.id})" class="btn-delete">🗑️</button>
+            </div>
         `;
         list.appendChild(li);
     });

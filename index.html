@@ -11,7 +11,7 @@
     <div class="container">
         <header>
             <h1>🩺 Keka Med Recall</h1>
-            <p>Planeamento de Residência Médica</p>
+            <p>Planejamento de Residência Médica</p>
         </header>
 
         <section class="card">
@@ -25,10 +25,49 @@
         </section>
 
         <section class="card">
-            <h2>📅 As Tuas Revisões</h2>
+            <h2>📅 Suas Revisões</h2>
             <ul id="reviewList">
                 </ul>
         </section>
+    </div>
+
+    <div id="modalComplete" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Concluir Revisão</h3>
+            <p>Como foi o seu desempenho?</p>
+            
+            <label>Total de Questões</label>
+            <input type="number" id="modalTotal" placeholder="Ex: 20">
+            
+            <label>Acertos</label>
+            <input type="number" id="modalAcertos" placeholder="Ex: 18">
+
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal('modalComplete')">Cancelar</button>
+                <button class="btn-confirm" onclick="confirmComplete()">Salvar Resultado</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalDelete" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Excluir Revisão</h3>
+            <p>Tem certeza? Isso não pode ser desfeito.</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal('modalDelete')">Cancelar</button>
+                <button class="btn-delete-confirm" onclick="confirmDelete()">Sim, Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalAlert" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h3>Atenção</h3>
+            <p id="alertMessage">Mensagem aqui</p>
+            <div class="modal-actions">
+                <button class="btn-confirm" onclick="closeModal('modalAlert')">Entendi</button>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>

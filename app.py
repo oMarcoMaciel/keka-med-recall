@@ -4,7 +4,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from authlib.integrations.flask_client import OAuth
 import os
 import json
-from datetime import datetime
+# MUDANÇA 1: Importar timedelta para calcular duração
+from datetime import datetime, timedelta 
 
 app = Flask(__name__)
 
@@ -25,7 +26,6 @@ oauth = OAuth(app)
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 
-# Aqui pedimos TUDO de uma vez: Email, Perfil e Agenda
 google = oauth.register(
     name='google',
     client_id=GOOGLE_CLIENT_ID,
@@ -42,18 +42,14 @@ google = oauth.register(
 # --- LOGIN MANAGER ---
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login_page' # Mudamos o nome da rota da tela de login
+login_manager.login_view = 'login_page'
 
 # --- MODELOS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
-    # password sumiu! Não precisamos mais.
-    
-    # Token continua essencial
     google_token = db.Column(db.Text, nullable=True) 
-    
     reviews = db.relationship('Review', backref='user', lazy=True)
 
 class Review(db.Model):
@@ -83,15 +79,28 @@ def create_google_event(user, topic, iso_date, cycle):
         return False
     
     token = json.loads(user.google_token)
-    event_time = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
-    start_str = event_time.isoformat()
+    
+    # Converte string ISO para objeto de Data do Python
+    start_dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+    
+    # MUDANÇA 2: Calcula o fim somando 1 hora
+    end_dt = start_dt + timedelta(hours=1)
 
     event_body = {
         'summary': f'Revisão {cycle}: {topic}',
         'description': 'Revisão automática gerada pelo Keka Med Recall.',
-        'start': {'dateTime': start_str, 'timeZone': 'America/Recife'},
-        'end': {'dateTime': start_str, 'timeZone': 'America/Recife'}, # Evento pontual
-        'reminders': {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': 10}]},
+        'start': {
+            'dateTime': start_dt.isoformat(), 
+            'timeZone': 'America/Recife'
+        },
+        'end': {
+            'dateTime': end_dt.isoformat(), # Agora tem hora de fim correta
+            'timeZone': 'America/Recife'
+        },
+        'reminders': {
+            'useDefault': False,
+            'overrides': [{'method': 'popup', 'minutes': 10}],
+        },
     }
 
     try:
@@ -105,48 +114,37 @@ def create_google_event(user, topic, iso_date, cycle):
         print(f"Erro ao agendar: {e}")
         return False
 
-# --- ROTAS DE AUTENTICAÇÃO (MUDOU TUDO AQUI) ---
+# --- ROTAS DE AUTENTICAÇÃO ---
 
 @app.route('/login')
 def login_page():
-    # Se já tá logado, manda pra home
     if current_user.is_authenticated:
         return redirect(url_for('home'))
     return render_template('login.html')
 
 @app.route('/auth/google')
 def google_login():
-    # Inicia o fluxo de login do Google
-    # prompt='consent' garante que sempre atualizamos o token se precisar
     redirect_uri = url_for('google_callback', _external=True)
     return google.authorize_redirect(redirect_uri, access_type='offline', prompt='consent')
 
 @app.route('/google/callback')
 def google_callback():
     try:
-        # 1. Recebe o token do Google
         token = google.authorize_access_token()
-        
-        # 2. Pega os dados do perfil do usuário
         user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
         email = user_info['email']
         name = user_info['name']
         
-        # 3. Verifica se o usuário já existe no banco
         user = User.query.filter_by(email=email).first()
         
         if not user:
-            # 4. Se não existe, CRIA AUTOMATICAMENTE (Registro implícito)
             user = User(name=name, email=email)
             db.session.add(user)
         
-        # 5. Atualiza o token sempre (para garantir que não expire)
         user.google_token = json.dumps(token)
         db.session.commit()
         
-        # 6. Faz o login no Flask
         login_user(user)
-        
         return redirect(url_for('home'))
         
     except Exception as e:
@@ -189,7 +187,7 @@ def add_review():
     db.session.add(new_review)
     db.session.commit()
     
-    # Agenda Automaticamente
+    # Agenda Automaticamente (Agora com 1h de duração)
     create_google_event(current_user, new_review.topic, new_review.date, new_review.cycle)
 
     return jsonify(new_review.to_dict())

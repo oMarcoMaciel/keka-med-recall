@@ -1,7 +1,6 @@
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
 import os
 import json
@@ -23,10 +22,10 @@ db = SQLAlchemy(app)
 # --- OAUTH SETUP (GOOGLE) ---
 oauth = OAuth(app)
 
-# Tenta pegar as credenciais do ambiente (Render) ou usa strings vazias (vai dar erro se não configurar)
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 
+# Aqui pedimos TUDO de uma vez: Email, Perfil e Agenda
 google = oauth.register(
     name='google',
     client_id=GOOGLE_CLIENT_ID,
@@ -43,16 +42,16 @@ google = oauth.register(
 # --- LOGIN MANAGER ---
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = 'login_page' # Mudamos o nome da rota da tela de login
 
 # --- MODELOS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
-    password = db.Column(db.String(150), nullable=False)
+    # password sumiu! Não precisamos mais.
     
-    # NOVOS CAMPOS: Para guardar o token do Google
+    # Token continua essencial
     google_token = db.Column(db.Text, nullable=True) 
     
     reviews = db.relationship('Review', backref='user', lazy=True)
@@ -78,39 +77,24 @@ class Review(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- FUNÇÃO AUXILIAR: Criar Evento no Google Agenda ---
+# --- FUNÇÃO AUXILIAR: Criar Evento ---
 def create_google_event(user, topic, iso_date, cycle):
     if not user.google_token:
-        return False # Usuário não conectou o Google Agenda
+        return False
     
     token = json.loads(user.google_token)
-    
-    # Configura o evento
     event_time = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
     start_str = event_time.isoformat()
-    end_str = start_str # Duração padrão de 1h pode ser ajustada, ou evento de dia inteiro
 
     event_body = {
         'summary': f'Revisão {cycle}: {topic}',
         'description': 'Revisão automática gerada pelo Keka Med Recall.',
-        'start': {
-            'dateTime': start_str,
-            'timeZone': 'America/Recife', # Ajuste o fuso dela se necessário
-        },
-        'end': {
-            'dateTime': start_str, # Se quiser 1h de duração, adicione timedelta aqui
-            'timeZone': 'America/Recife',
-        },
-        'reminders': {
-            'useDefault': False,
-            'overrides': [
-                {'method': 'popup', 'minutes': 10},
-            ],
-        },
+        'start': {'dateTime': start_str, 'timeZone': 'America/Recife'},
+        'end': {'dateTime': start_str, 'timeZone': 'America/Recife'}, # Evento pontual
+        'reminders': {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': 10}]},
     }
 
     try:
-        # Faz a chamada para a API do Google usando o token salvo
         resp = google.post(
             'https://www.googleapis.com/calendar/v3/calendars/primary/events',
             json=event_body,
@@ -121,79 +105,69 @@ def create_google_event(user, topic, iso_date, cycle):
         print(f"Erro ao agendar: {e}")
         return False
 
-# --- ROTAS PRINCIPAIS ---
+# --- ROTAS DE AUTENTICAÇÃO (MUDOU TUDO AQUI) ---
 
-@app.route('/')
-def home():
-    if not current_user.is_authenticated:
-        return redirect(url_for('login'))
-    
-    # Verifica se ela já conectou o Google
-    google_connected = current_user.google_token is not None
-    return render_template('index.html', name=current_user.name, google_connected=google_connected)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-        user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-            return redirect(url_for('home'))
-        else:
-            flash('Login inválido.')
+@app.route('/login')
+def login_page():
+    # Se já tá logado, manda pra home
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
     return render_template('login.html')
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        email = request.form.get('email')
-        password = request.form.get('password')
+@app.route('/auth/google')
+def google_login():
+    # Inicia o fluxo de login do Google
+    # prompt='consent' garante que sempre atualizamos o token se precisar
+    redirect_uri = url_for('google_callback', _external=True)
+    return google.authorize_redirect(redirect_uri, access_type='offline', prompt='consent')
+
+@app.route('/google/callback')
+def google_callback():
+    try:
+        # 1. Recebe o token do Google
+        token = google.authorize_access_token()
         
-        if User.query.filter_by(email=email).first():
-            flash('Email já cadastrado.')
-            return redirect(url_for('register'))
+        # 2. Pega os dados do perfil do usuário
+        user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
+        email = user_info['email']
+        name = user_info['name']
         
-        new_user = User(
-            name=name, email=email, 
-            password=generate_password_hash(password, method='pbkdf2:sha256')
-        )
-        db.session.add(new_user)
+        # 3. Verifica se o usuário já existe no banco
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            # 4. Se não existe, CRIA AUTOMATICAMENTE (Registro implícito)
+            user = User(name=name, email=email)
+            db.session.add(user)
+        
+        # 5. Atualiza o token sempre (para garantir que não expire)
+        user.google_token = json.dumps(token)
         db.session.commit()
-        login_user(new_user)
+        
+        # 6. Faz o login no Flask
+        login_user(user)
+        
         return redirect(url_for('home'))
-    return render_template('register.html')
+        
+    except Exception as e:
+        flash(f'Erro no login com Google: {str(e)}')
+        return redirect(url_for('login_page'))
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('login'))
+    return redirect(url_for('login_page'))
 
-# --- ROTAS DO GOOGLE OAUTH ---
+# --- ROTAS DO APP ---
 
-@app.route('/connect-google')
-@login_required
-def connect_google():
-    # Manda o usuário para o Google aceitar a permissão
-    # prompt='consent' força pedir permissão para garantir que receberemos o refresh token (offline)
-    # access_type='offline' é crucial para agendar coisas quando ela não estiver logada no Google na hora
-    redirect_uri = url_for('google_callback', _external=True)
-    return google.authorize_redirect(redirect_uri, access_type='offline', prompt='consent')
+@app.route('/')
+def home():
+    if not current_user.is_authenticated:
+        return redirect(url_for('login_page'))
+    return render_template('index.html', name=current_user.name)
 
-@app.route('/google/callback')
-@login_required
-def google_callback():
-    token = google.authorize_access_token()
-    # Salva o token no banco de dados do usuário
-    current_user.google_token = json.dumps(token)
-    db.session.commit()
-    flash('Google Agenda conectado com sucesso! As próximas revisões serão automáticas.')
-    return redirect(url_for('home'))
-
-# --- API DE REVISÕES ---
+# --- API ---
 
 @app.route('/api/reviews', methods=['GET'])
 @login_required
@@ -215,7 +189,7 @@ def add_review():
     db.session.add(new_review)
     db.session.commit()
     
-    # --- AUTOMAÇÃO: Agenda no Google ---
+    # Agenda Automaticamente
     create_google_event(current_user, new_review.topic, new_review.date, new_review.cycle)
 
     return jsonify(new_review.to_dict())
@@ -227,9 +201,7 @@ def delete_review(id):
     if review:
         db.session.delete(review)
         db.session.commit()
-        # Nota: Deletar do Google Agenda exige salvar o ID do evento do Google. 
-        # Por simplicidade, nesta versão v1 não deletamos do Google automaticamente.
-        return jsonify({'message': 'Deletado com sucesso'})
+        return jsonify({'message': 'Deletado'})
     return jsonify({'error': 'Não encontrado'}), 404
 
 # --- INICIALIZAÇÃO ---

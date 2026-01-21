@@ -5,8 +5,24 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'chave-secreta-keka' 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///keka_recall.db'
+
+# --- CONFIGURAÇÃO INTELIGENTE (LOCAL vs RENDER) ---
+
+# 1. Secret Key: Pega do Render ou usa uma padrão para local
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'chave-padrao-desenvolvimento')
+
+# 2. Banco de Dados: Verifica se existe o banco do Render
+database_url = os.environ.get('DATABASE_URL')
+
+if database_url:
+    # Correção necessária para o Render (SQLAlchemy precisa de postgresql://)
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Se não tem URL do Render, usa SQLite local
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///keka_recall.db'
+
 db = SQLAlchemy(app)
 
 # --- Login Setup ---
@@ -30,14 +46,13 @@ class Review(db.Model):
     last_interval = db.Column(db.Integer, default=0)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
-    # Função auxiliar para transformar o objeto do banco em JSON
     def to_dict(self):
         return {
             'id': self.id,
             'topic': self.topic,
             'date': self.date,
             'cycle': self.cycle,
-            'lastInterval': self.last_interval # Convertendo snake_case para camelCase pro JS
+            'lastInterval': self.last_interval
         }
 
 @login_manager.user_loader
@@ -94,12 +109,11 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- API (O Cérebro que conecta com o JS) ---
+# --- API (Conexão com JS) ---
 
 @app.route('/api/reviews', methods=['GET'])
 @login_required
 def get_reviews():
-    # Pega APENAS as revisões do usuário atual
     user_reviews = Review.query.filter_by(user_id=current_user.id).all()
     return jsonify([r.to_dict() for r in user_reviews])
 
@@ -112,7 +126,7 @@ def add_review():
         date=data['date'],
         cycle=data['cycle'],
         last_interval=data.get('lastInterval', 0),
-        user_id=current_user.id # Vincula ao usuário logado
+        user_id=current_user.id
     )
     db.session.add(new_review)
     db.session.commit()
@@ -121,7 +135,6 @@ def add_review():
 @app.route('/api/reviews/<int:id>', methods=['DELETE'])
 @login_required
 def delete_review(id):
-    # Tenta encontrar a revisão, mas garante que pertence ao usuário
     review = Review.query.filter_by(id=id, user_id=current_user.id).first()
     if review:
         db.session.delete(review)

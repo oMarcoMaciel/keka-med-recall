@@ -1,0 +1,213 @@
+:root {
+    --primary: #4f46e5; /* Azul moderno */
+    --success: #10b981; /* Verde sucesso */
+    --danger: #ef4444;  /* Vermelho perigo (NOVO) */
+    --bg: #f3f4f6;
+    --card-bg: #ffffff;
+    --text: #1f2937;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 500px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.card {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+h2 {
+    margin-top: 0;
+    font-size: 1.2rem;
+}
+
+h3 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    color: var(--text);
+}
+
+.hint {
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    box-sizing: border-box;
+    font-size: 16px;
+}
+
+.buttons {
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    flex: 1;
+    background-color: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 14px;
+    transition: opacity 0.2s;
+}
+
+button:hover {
+    opacity: 0.9;
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+}
+
+li {
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.review-info strong {
+    display: block;
+    font-size: 1rem;
+}
+
+.review-info span {
+    font-size: 0.85em;
+    color: #6b7280;
+}
+
+/* Container para os botões da lista ficarem alinhados à direita */
+.actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Ajuste no botão de check da lista */
+.btn-check {
+    background-color: var(--success);
+    padding: 8px 12px;
+    font-size: 14px;
+    flex: 0;
+    min-width: auto;
+}
+
+/* Botão de excluir da lista (vermelho clarinho) */
+.btn-delete {
+    background-color: #fee2e2;
+    color: var(--danger);
+    padding: 8px 12px;
+    font-size: 14px;
+    border-radius: 8px;
+    flex: 0;
+    min-width: auto;
+}
+
+.btn-delete:hover {
+    background-color: #fca5a5;
+    color: #7f1d1d;
+}
+
+/* === ESTILOS DOS MODAIS (NOVO) === */
+
+/* Fundo escuro que cobre a tela toda */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5); /* Fundo preto 50% transparente */
+    backdrop-filter: blur(2px);     /* Efeito de desfoque moderno */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 1;
+    transition: opacity 0.2s, visibility 0.2s;
+}
+
+/* Classe para esconder o modal */
+.modal-overlay.hidden {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* A caixinha branca do modal */
+.modal-box {
+    background: white;
+    padding: 25px;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 350px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    animation: slideUp 0.3s ease-out; /* Animação de entrada */
+}
+
+/* Animação suave subindo */
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-box label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+/* Botões específicos dentro do modal */
+.btn-cancel {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.btn-confirm {
+    background-color: var(--success);
+}
+
+.btn-delete-confirm {
+    background-color: var(--danger);
+}

@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', loadReviews);
 
 let currentReviewId = null; 
-let reviewsCache = []; // Variável para guardar os dados carregados do servidor
+let reviewsCache = []; // Cache local
 
 // --- Passo 1: Agendar Teoria ---
 function scheduleReview(hours) {
@@ -24,14 +24,11 @@ function scheduleReview(hours) {
         lastInterval: 0 
     };
 
-    // Envia para o Servidor (Python)
+    // Envia para o Servidor (O Python vai agendar no Google Agenda automaticamente)
     saveReviewToServer(reviewItem).then(() => {
-        // Gera link e abre Google Agenda
-        const gCalLink = createGoogleCalendarLink(topic, reviewDate, 1);
-        window.open(gCalLink, '_blank');
-
         topicInput.value = ""; 
-        loadReviews(); // Recarrega a lista do servidor
+        loadReviews(); 
+        showAlert("Estudo registrado! O evento foi criado no seu Google Agenda automaticamente.");
     });
 }
 
@@ -66,14 +63,13 @@ function confirmComplete() {
 
     const porcentagem = (acertos / total) * 100;
     
-    // Busca o item no cache local (que veio do servidor)
     const oldItem = reviewsCache.find(r => r.id === currentReviewId);
 
     if (oldItem) {
         let diasParaProxima;
         let proximoCiclo = oldItem.cycle + 1;
 
-        // === LÓGICA DA AGENDA ===
+        // === LÓGICA DA AGENDA (Spaced Repetition) ===
         if (oldItem.cycle === 1) {
             if (porcentagem >= 75) diasParaProxima = 28;
             else if (porcentagem >= 50) diasParaProxima = 21;
@@ -106,20 +102,17 @@ function confirmComplete() {
         // 1. Deleta o antigo no servidor
         deleteReviewFromServer(currentReviewId)
             .then(() => {
-                // 2. Cria o novo no servidor
+                // 2. Cria o novo no servidor (Python agenda no Google)
                 return saveReviewToServer(newItem);
             })
             .then(() => {
-                // 3. Abre Google Agenda e Atualiza Tela
-                const gCalLink = createGoogleCalendarLink(newItem.topic, novaData, proximoCiclo);
-                window.open(gCalLink, '_blank');
-
                 let msgTempo;
                 if (diasParaProxima >= 30) msgTempo = `daqui a ${(diasParaProxima/30).toFixed(1)} meses`;
                 else if (diasParaProxima >= 7) msgTempo = `daqui a ${(diasParaProxima/7).toFixed(0)} semanas`;
                 else msgTempo = `daqui a ${diasParaProxima} dias`;
 
-                showAlert(`Desempenho: ${porcentagem.toFixed(0)}%\nAgendado: Revisão ${proximoCiclo} para ${msgTempo}.`);
+                // Apenas avisa na tela, sem abrir janelas extras
+                showAlert(`Desempenho: ${porcentagem.toFixed(0)}%\nAgendado automaticamente: Revisão ${proximoCiclo} para ${msgTempo}.`);
                 loadReviews();
             });
     }
@@ -155,15 +148,14 @@ window.onclick = function(event) {
     }
 }
 
-// --- NOVAS FUNÇÕES DE API (Conectam com Python) ---
+// --- API (Conectam com Python) ---
 
 function loadReviews() {
     const list = document.getElementById('reviewList');
-    // Chama o Python para pegar os dados
     fetch('/api/reviews')
         .then(response => response.json())
         .then(reviews => {
-            reviewsCache = reviews; // Guarda na memória
+            reviewsCache = reviews; 
             list.innerHTML = "";
 
             if (reviews.length === 0) {
@@ -171,7 +163,6 @@ function loadReviews() {
                 return;
             }
 
-            // Ordena localmente para exibição
             reviews.sort((a, b) => new Date(a.date) - new Date(b.date));
 
             reviews.forEach(review => {
@@ -212,15 +203,4 @@ function deleteReviewFromServer(id) {
     return fetch(`/api/reviews/${id}`, {
         method: 'DELETE'
     });
-}
-
-function createGoogleCalendarLink(topic, dateObj, cycle) {
-    const start = dateObj.toISOString().replace(/-|:|\.\d\d\d/g, ""); 
-    const endObj = new Date(dateObj.getTime() + (1 * 60 * 60 * 1000));
-    const end = endObj.toISOString().replace(/-|:|\.\d\d\d/g, "");
-
-    const title = encodeURIComponent(`Revisão ${cycle}: ${topic}`);
-    const details = encodeURIComponent("Revisão gerada pelo Keka Med Recall.");
-    
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}`;
 }

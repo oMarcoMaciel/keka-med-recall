@@ -142,7 +142,12 @@ def delete_review(id):
         return jsonify({'message': 'Deletado com sucesso'})
     return jsonify({'error': 'Não encontrado'}), 404
 
+
+# --- ISSO AQUI VAI CRIAR AS TABELAS NO NEON ---
+with app.app_context():
+    db.create_all()
+
+# --- Bloco de execução local (mantenha como está) ---
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
+

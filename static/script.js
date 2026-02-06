@@ -37,17 +37,25 @@ function openCompleteModal(id) {
     currentReviewId = id;
     document.getElementById('modalTotal').value = "";
     document.getElementById('modalAcertos').value = "";
+    
+    // --- NOVO: Preenche a data automaticamente com HOJE ---
+    const hoje = new Date();
+    const hojeFormatado = hoje.toISOString().split('T')[0];
+    document.getElementById('modalDate').value = hojeFormatado;
+    // -----------------------------------------------------
+
     document.getElementById('modalComplete').classList.remove('hidden');
-    document.getElementById('modalTotal').focus();
+    // document.getElementById('modalTotal').focus(); // Tirei o foco automático pra não atrapalhar o date picker
 }
 
 // --- Passo 2: O Cérebro Lógico ---
 function confirmComplete() {
     const totalInput = document.getElementById('modalTotal').value;
     const acertosInput = document.getElementById('modalAcertos').value;
+    const dateInput = document.getElementById('modalDate').value; // Pega a data escolhida
 
-    if (!totalInput || !acertosInput) {
-        showAlert("Preencha todos os campos!");
+    if (!totalInput || !acertosInput || !dateInput) {
+        showAlert("Preencha todos os campos e a data!");
         return;
     }
 
@@ -89,8 +97,12 @@ function confirmComplete() {
             if (diasParaProxima < 7) diasParaProxima = 7; 
         }
 
-        const hoje = new Date();
-        const novaData = new Date(hoje.getTime() + (diasParaProxima * 24 * 60 * 60 * 1000));
+        // --- MUDANÇA: Calcula a partir da data escolhida ---
+        // Adiciona T12:00:00 para fixar meio-dia e evitar bugs de fuso horário voltando 1 dia
+        const dataBase = new Date(dateInput + "T12:00:00"); 
+        
+        const novaData = new Date(dataBase.getTime() + (diasParaProxima * 24 * 60 * 60 * 1000));
+        // ---------------------------------------------------
 
         const newItem = {
             topic: oldItem.topic,
@@ -111,8 +123,10 @@ function confirmComplete() {
                 else if (diasParaProxima >= 7) msgTempo = `daqui a ${(diasParaProxima/7).toFixed(0)} semanas`;
                 else msgTempo = `daqui a ${diasParaProxima} dias`;
 
-                // Apenas avisa na tela, sem abrir janelas extras
-                showAlert(`Desempenho: ${porcentagem.toFixed(0)}%\nAgendado automaticamente: Revisão ${proximoCiclo} para ${msgTempo}.`);
+                // Formata a data escolhida para mostrar no alerta
+                const dataOrigemStr = dataBase.toLocaleDateString('pt-BR');
+
+                showAlert(`Registrado em ${dataOrigemStr}.\nDesempenho: ${porcentagem.toFixed(0)}%\nAgendado automaticamente: Revisão ${proximoCiclo} para ${msgTempo}.`);
                 loadReviews();
             });
     }
